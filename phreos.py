@@ -20,25 +20,25 @@ class cups_LP:
 		#Default Config Values
 		self.spool = "/var/spool/cups/"
 		self.printers = "Virtual_PDF_Printer"
-		
+
 		try:
 			spool = config.get("CupsConf","SpoolPath")
 			printer = config.get("CupsConf","Printers")
 		except Exception as x:
 			print "Error loading vals from config file:",x
 			print "Making a fresh config file with default values!"
-			
+
 			if not config.has_section("CupsConf"):
 				config.add_section("CupsConf")
-				
+
 			config.set("CupsConf","SpoolPath",self.spool)
 			config.set("CupsConf","Printers",self.printers)
-			
+
 			with open(confPath,'w') as configFile:
 				config.write(configFile)
-			
+
 		self.lpq = []
-		
+
 	#Translates cups-job-num to lpq-index-num
 	def _get_job_num(self, num):
 		for index, job in enumerate(self.lpq):
@@ -70,7 +70,7 @@ class cups_LP:
 		print "releaseing job num "+self.lpq[num][3]
 		#subprocess.Popen("lp -i "+self.printers+"-"+self.lpq[num][3]+" -H immediate", shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 		return True
-		
+
 	def cancel_job(self, num):
 		num = self._get_job_num(num)
 		if num < 0:
@@ -78,14 +78,14 @@ class cups_LP:
 		print "canceling job num "+self.lpq[num][3]
 		#subprocess.Popen("cancel "+self.printers+" "+self.lpq[num][3], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 		return True
-		
+
 class logger:
 	def __init__(self, filename):
 		self.logFile = open(filename,'a')
-	
+
 	def add(self, entry):
 		self.logFile.write(str(datetime.datetime.today())+" : "+entry+"\n")
-		
+
 class service:
 	def __init__(self):
 		self.port = 2308
@@ -99,7 +99,7 @@ class service:
 		except Exception as x:
 			print "Error loading vals from config file:",x
 			print "Making a fresh config file with default values!"
-			
+
 			if not config.has_section("PhreosConf"):
 				config.add_section("PhreosConf")
 
@@ -108,11 +108,11 @@ class service:
 			config.set("PhreosConf","LogPath",logPath)
 
 			with open(confPath,'w') as configFile:
-				config.write(configFile)	
+				config.write(configFile)
 
 		self.log = logger(logPath)
 		self.backend = cups_LP()
-	
+
 	def handleClient(self, clientSock, address ):
 		string = ""
 		authInfo = None
@@ -120,12 +120,12 @@ class service:
 			try:
 				string = clientSock.recv(1024)
 				print "received: >"+string+"<"
-				
+
 				if (string[:9] == "authuser="):
 					authInfo = dict(zip(["user","passwd"],string[9:].split(":")))
 					print authInfo
 					clientSock.send("success")
-				
+
 				elif (string == "request_list"):
 					jobs = self.backend.query_printers()
 					for line in jobs:
@@ -134,7 +134,7 @@ class service:
 						clientSock.send(s)
 						clientSock.recv(1024)
 					clientSock.send("done")
-					
+
 				elif (string[:8] == "release="):
 					if len(authInfo):
 						r = self.backend.release_job(int(string[8:]))
@@ -147,7 +147,7 @@ class service:
 					else:
 						print "ERROR: Tried to print before Auth."
 						break
-						
+
 				elif (string[:7] == "cancel="):
 					if len(authInfo):
 						r = self.backend.cancel_job(int(string[7:]))
@@ -160,15 +160,15 @@ class service:
 					else:
 						print "ERROR: Tried to cancel before Auth."
 						break
-				
+
 				else:
 					print "received bad string: "+string
 					break
-					
-			except Exception as x:
-				print "ERROR:",x
+
+			except:
+				print "ERROR:"
 				break
-		
+
 		##Gracefully disconnect
 
 	def serviceLoop(self, servSock):
@@ -177,12 +177,15 @@ class service:
 				print "Waiting for next client..."
 				(clientSock, address) = servSock.accept()
 				print "Client Connected, Creating Thread"
-				threading.Thread(target=self.handleClient, args=(clientSock, address)).start()
-			except Exception as x:
-				print "ERROR:",x,"\nExiting Service."
+				t = threading.Thread(target=self.handleClient, args=(clientSock, address))
+				t.daemon = True
+				t.start()
+			except:
+				print "ERROR!\nExiting Service."
+				servSock.shutdown(socket.SHUT_RDWR)
 				servSock.close()
-				break	
-		
+				break
+
 	def start(self):
 		print "Starting Server ("+version+")"
 		servSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -190,18 +193,6 @@ class service:
 		servSock.listen(self.maxClients)
 		self.serviceLoop(servSock)
 
-def main_simple_CLI():
-	backend = cups_LP()
-	printer_list = backend.query_printers()
-	for p in printer_list:
-		print p
-	
-	print "print which one:"
-	sin = int(sys.stdin.readline())-1
-	
-	backend.release_job(sin)
-
 if __name__ == "__main__":
-	#main_simple_CLI()
 	serv = service()
 	serv.start()
