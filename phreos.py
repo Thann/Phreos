@@ -89,7 +89,7 @@ class logger:
 class service:
 	def __init__(self):
 		self.port = 2308
-		self.maxClients = 100
+		self.maxClients = 20
 		logPath = os.path.abspath(os.path.dirname(__file__)+"/phreos_print.log")
 
 		try:
@@ -116,7 +116,7 @@ class service:
 	def handleClient(self, clientSock, address ):
 		string = ""
 		authInfo = None
-		while (string != "kill"):
+		while (True):
 			try:
 				string = clientSock.recv(1024)
 				print "received: >"+string+"<"
@@ -169,7 +169,8 @@ class service:
 				print "ERROR:"
 				break
 
-		##Gracefully disconnect
+		#Gracefully disconnect
+		clientSock.close()
 
 	def serviceLoop(self, servSock):
 		while 1:
@@ -182,7 +183,6 @@ class service:
 				t.start()
 			except:
 				print "ERROR!\nExiting Service."
-				servSock.shutdown(socket.SHUT_RDWR)
 				servSock.close()
 				break
 
