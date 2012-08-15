@@ -1,17 +1,42 @@
 #!/usr/bin/python2
 
+import os
 import sys
 import socket
+import ConfigParser
 
 version = "0.0.1"
-port = 2308
-serverAddress = "127.0.0.1"
+
+global config
+config = ConfigParser.RawConfigParser()
+confPath = os.path.abspath(os.path.dirname(__file__)+"/phreos-terminal.conf") #location of this program
+config.read(confPath)
 
 class server_connection:
 	def __init__(self):
+		port = 2308
+		serverAddress = "127.0.0.1"
+		
+		try:
+			port = config.getint("TermConf","Port")
+			serverAddress = config.get("TermConf","ServerAddress")
+		except Exception as x:
+			print "Error loading vals from config file:",x
+			print "Making a fresh config file with default values!"
+			
+			if not config.has_section("TermConf"):
+				config.add_section("TermConf")
+				
+			config.set("TermConf","Port",port)
+			config.set("TermConf","ServerAddress",serverAddress)
+			
+			with open(confPath,'w') as configFile:
+				config.write(configFile)
+		
 		self.jobs = []
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.sock.settimeout(3)
+		
 		try: 
 			self.sock.connect((serverAddress , port))
 		except Exception as x:
@@ -69,8 +94,8 @@ def main_simple_CLI():
 	print "print which one:"
 	sin = int(sys.stdin.readline())-1
 	
-	#ret = conn.release_job(sin)
-	ret = conn.cancel_job(sin)
+	ret = conn.release_job(sin)
+	#ret = conn.cancel_job(sin)
 	print "success?",ret
 
 	conn.close()

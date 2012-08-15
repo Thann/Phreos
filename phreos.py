@@ -1,21 +1,42 @@
 #!/usr/bin/python2
 
+import os
 import sys
 import socket
 import datetime
 import threading
-import subprocess 
+import subprocess
+import ConfigParser
 
 version = "0.0.1"
-#version = version.split(".")
-port = 2308
-maxClients = 100
+
+global config
+config = ConfigParser.RawConfigParser()
+confPath = os.path.abspath(os.path.dirname(__file__)+"/phreos-server.conf") #location of this program
+config.read(confPath)
 
 class cups_LP:
 	def __init__(self):
-		#Vars
+		#Default Config Values
 		self.spool = "/var/spool/cups/"
-		self.printer = "Virtual_PDF_Printer"
+		self.printers = "Virtual_PDF_Printer"
+		
+		try:
+			spool = config.get("CupsConf","SpoolPath")
+			printer = config.get("CupsConf","Printers")
+		except Exception as x:
+			print "Error loading vals from config file:",x
+			print "Making a fresh config file with default values!"
+			
+			if not config.has_section("CupsConf"):
+				config.add_section("CupsConf")
+				
+			config.set("CupsConf","SpoolPath",self.spool)
+			config.set("CupsConf","Printers",self.printers)
+			
+			with open(confPath,'w') as configFile:
+				config.write(configFile)
+			
 		self.lpq = []
 		
 	#Translates cups-job-num to lpq-index-num
@@ -28,7 +49,7 @@ class cups_LP:
 		return -1
 
 	def query_printers(self):
-		lpq = subprocess.Popen("lpq -P "+self.printer, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+		lpq = subprocess.Popen("lpq -P "+self.printers, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 		lpq = lpq.stdout.readlines()[2:]
 
 		for index in xrange(len(lpq)):
@@ -47,7 +68,7 @@ class cups_LP:
 		if num < 0:
 			return False
 		print "releaseing job num "+self.lpq[num][3]
-		#subprocess.Popen("lp -i "+self.printer+"-"+self.lpq[num][3]+" -H immediate", shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+		#subprocess.Popen("lp -i "+self.printers+"-"+self.lpq[num][3]+" -H immediate", shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 		return True
 		
 	def cancel_job(self, num):
@@ -55,7 +76,7 @@ class cups_LP:
 		if num < 0:
 			return False
 		print "canceling job num "+self.lpq[num][3]
-		#subprocess.Popen("cancel "+self.printer+" "+self.lpq[num][3], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+		#subprocess.Popen("cancel "+self.printers+" "+self.lpq[num][3], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 		return True
 		
 class logger:
@@ -67,9 +88,31 @@ class logger:
 		
 class service:
 	def __init__(self):
+		self.port = 2308
+		self.maxClients = 100
+		logPath = os.path.abspath(os.path.dirname(__file__)+"/phreos_print.log")
+
+		try:
+			self.port = config.getint("PhreosConf","Port")
+			self.maxClients = config.getint("PhreosConf","MaxClients")
+			logPath = config.get("PhreosConf","LogPath")
+		except Exception as x:
+			print "Error loading vals from config file:",x
+			print "Making a fresh config file with default values!"
+			
+			if not config.has_section("PhreosConf"):
+				config.add_section("PhreosConf")
+
+			config.set("PhreosConf","Port",self.port)
+			config.set("PhreosConf","MaxClients",self.maxClients)
+			config.set("PhreosConf","LogPath",logPath)
+
+			with open(confPath,'w') as configFile:
+				config.write(configFile)	
+
+		self.log = logger(logPath)
 		self.backend = cups_LP()
-		self.log = logger("phreos_print.log")		
-		
+	
 	def handleClient(self, clientSock, address ):
 		string = ""
 		authInfo = None
@@ -143,8 +186,8 @@ class service:
 	def start(self):
 		print "Starting Server ("+version+")"
 		servSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		servSock.bind(('', port))
-		servSock.listen(maxClients)
+		servSock.bind(('', self.port))
+		servSock.listen(self.maxClients)
 		self.serviceLoop(servSock)
 
 def main_simple_CLI():
